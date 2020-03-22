@@ -1,4 +1,123 @@
-﻿发布时间：2018/11/08 11:12
+﻿发布时间：2019/11/19 10:46
+修改记录：
+    一、lib脚本修改
+	lib脚本版本号：2.3.5
+	(1)audio.lua：增加tts语音速度设置接口audio.setTTSSpeed
+	(2)socket.lua：修正“同时存在多个socket域名连接，使用http dns功能时，会导致概率重启”的问题
+	(3)新增“main.lua中配置COROUTINE_ERROR_ROLL_BACK=true，协程运行出错，允许回滚版本”功能
+	(4)mqtt.lua：修正“mqtt recv阻塞接收时，如果允许消息退出阻塞状态，会导致publish阻塞等待puback时，退出阻塞状态，导致publish失败”的问题【阿里云也存在此问题】
+	(5)audio.lua：修正“audio.setMicVolume接口设置mic音量等级无效”的问题；新增获取喇叭和mic音量等级的接口audio.getVolume和audio.getMicVolume
+
+
+
+发布时间：2019/08/12 11:03
+修改记录：
+    一、lib脚本修改
+	lib脚本版本号：2.3.4
+	(1)update.lua：新增“update.request配置定时检查升级功能后，调用update.request()支持实时检查升级”的功能
+	(2)sys.lua：setRollBack接口新增时间参数，可以配置“core运行过程中异常，是否回滚脚本”的时间阀值，注意：需要配合core使用，0036以及之后的core版本才支持此功能
+
+
+
+
+发布时间：2019/07/24 14:45
+修改记录：
+    一、lib脚本修改
+	lib脚本版本号：2.3.3
+	(1)aLiYun.lua：新增aLiYun.setErrHandle接口，可设置阿里云任务运行异常时的错误处理动作
+	(2)aLiYun.lua：新增“OTA升级失败时，主动上报旧版本号以及删除已下载文件”的功能
+	(3)audio.lua：优化音频播放的冲突管理机制
+	(4)socket.lua：connect接口新增timeout参数,允许用户设置最长连接IP等待超时，默认120秒
+	(5)mqtt.lua：connect接口新增timeout参数,允许用户设置最长连接IP等待超时，默认120秒
+
+
+
+
+发布时间：2019/05/24 14:22
+修改记录：
+    一、lib脚本修改
+	lib脚本版本号：2.3.2
+	(1)aLiPay.lua：新增支付宝功能
+	(2)errDump.lua：新增网络错误日志上报功能
+	(3)socket.lua：新增setSendMode接口，可设置数据发送模式（快发还是慢发）
+	
+
+
+
+发布时间：2019/01/22 17:41
+修改记录：
+    一、lib脚本修改
+	lib脚本版本号：2.3.1
+	(1)mqtt.lua：修正“mqtt publish qos为2时的内存泄漏”问题
+		【问题重要性】：重要
+		【问题影响模块】：所有模块
+		【问题出现概率】：必现
+	(2)lbsLoc.lua：1、新增socket创建失败的错误值返回；2、新增WIFI定位功能
+	(3)socket.lua：修正一处代码隐患，可能由于用户脚本的某种使用方式，导致一处for循环运行异常
+    二、demo脚本修改
+	(1)crypto：新增crypto.hmac_sha256算法的使用示例
+	(2)i2c：新增i2c1和i2c2的使用示例
+	(3)整理socket、mqtt、uart的demo目录
+
+
+
+
+发布时间：2018/12/06 16:26
+修改记录：
+    一、lib脚本修改
+	lib脚本版本号：2.3.0
+	(1)socket.lua：新增select框架，支持异步调用，支持保持链接心跳包间隔时间和心跳包设置；优化之前同步框架的send处理，增加socket同步框架的稳定性
+	(2)patch.lua：新增协程运行出错时，是否重启的配置功能
+		【新功能重要性】：一般
+		【问题影响模块】：所有模块
+		【新功能说明】： 如果需要重启，在main.lua的VERSION下一行定义COROUTINE_ERROR_RESTART = true
+    二、demo脚本修改
+	(1)新增asyncSocket和asyncSocketCallback两个演示demo
+	(2)apn：修正中国香港的一个apn name拼写出错的问题
+	(3)Air168：新增Air168 demo，需要配合Luat_VXXXX_8955_168_TTS_UI的lod使用
+	(3)Air268F：修正拍照测试时图像镜像的问题，需要配合Luat_VXXXX_8955F或者合Luat_VXXXX_8955F_FLOAT的版本使用，XXXX最低为0032
+
+
+
+发布时间：2018/12/03 10:04
+修改记录：
+    一、lib脚本修改
+	lib脚本版本号：2.2.1
+	(1)ril.lua：修正“小概率ssl socket连接失败时的SSL&X,CONNECT ERROR会被处理成其他AT的应答，引起其他AT超时，导致重启”的问题
+		【问题重要性】：一般
+		【问题影响模块】：所有模块
+		【问题出现概率】：在网络较差的情况下，小概率出现
+
+
+
+发布时间：2018/11/26 10:51
+修改记录：
+    一、lib脚本修改
+	lib脚本版本号：2.2.0
+	(1)socket.lua：修正“在执行:recv方法后，如果如果wait协程，在wait过程中，收到数据，会导致数据丢失”的问题
+		【问题重要性】：一般
+		【问题影响模块】：所有模块
+		【问题出现概率】：必现
+		【问题出现原因】：接受完数据后未将wait值清空，导致未将接收到的数据存储下来
+		【问题解决方式】：接收数据后及时清空wait值
+	(2)gps.lua：新增setNemaReportFreq接口，可设置每种NMEA语句的输出频率
+		【新功能重要性】：一般
+		【问题影响模块】：Air800、Air801
+		【新功能说明】： 参考API说明
+	(3)socket.lua：新增UDP连接超时处理功能
+		【新功能重要性】：一般
+		【问题影响模块】：所有模块
+		【新功能说明】： 默认两分钟没有连接成功，则返回连接超时失败
+	(4)aLiYun.lua：修正“阿里云重连时，会重复发送订阅消息”的问题
+		【问题重要性】：一般
+		【问题影响模块】：所有模块
+		【问题出现概率】：必现
+		【问题出现原因】：每次重连都会新增一个订阅消息
+		【问题解决方式】：重连前清空订阅消息列表
+
+
+
+发布时间：2018/11/08 11:12
 修改记录：
     一、lib脚本修改
 	lib脚本版本号：2.1.9

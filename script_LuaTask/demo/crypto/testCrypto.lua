@@ -100,10 +100,19 @@ end
 -- @usage sha256Test()
 local function sha256Test()
     local originStr = "sdfdsfdsfdsffdsfdsfsdfs1234"
-    if crypto.sha256 then
-        log.info("testCrypto.sha256",crypto.sha256(originStr):toHex())
+    if tonumber(string.match(rtos.get_version(),"Luat_V(%d+)_"))>=34 then
+        log.info("testCrypto.sha256",crypto.sha256(originStr))
     end
 end
+
+local function hmacSha256Test()
+    if type(crypto.hmac_sha256)=="function" then
+        local originStr = "asdasdsadasweqcdsjghjvcb"
+        local signKey = "12345689012345"
+        log.info("testCrypto.hmac_sha256",crypto.hmac_sha256(originStr,signKey))
+    end
+end
+
 
 --- crc算法测试
 -- @return 无
@@ -122,6 +131,9 @@ local function crcTest()
         log.info("testCrypto.crc16_CCITT-FALSE",string.format("%04X",crypto.crc16("CCITT-FALSE",originStr)))
         log.info("testCrypto.crc16_XMODEM",string.format("%04X",crypto.crc16("XMODEM",originStr)))
         log.info("testCrypto.crc16_DNP",string.format("%04X",crypto.crc16("DNP",originStr)))
+    end
+    if tonumber(string.match(rtos.get_version(),"Luat_V(%d+)_"))>=34 then
+        log.info("testCrypto.USER-DEFINED",string.format("%04X",crypto.crc16("USER-DEFINED",originStr,0x8005,0x0000,0x0000,0,0)))
     end
     
     log.info("testCrypto.crc16_modbus",string.format("%04X",crypto.crc16_modbus(originStr,slen(originStr))))
@@ -324,6 +336,71 @@ local function aesTest()
     end
 end
 
+--参考：http://www.kjson.com/encrypt/enc/
+local function desTest()
+    --aes.encrypt和aes.decrypt接口测试(V0020版本后的lod才支持此功能)
+    if tonumber(string.match(rtos.get_version(),"Luat_V(%d+)_"))>=34 then
+        local originStr = "123456789"
+        --加密模式：ECB；填充方式：ZeroPadding；密钥：12345678
+        local encodeStr = crypto.des_encrypt("ECB","ZERO",originStr,"12345678")
+        print(originStr,"DES ECB ZeroPadding encrypt",string.toHex(encodeStr))
+        log.info("DES ECB ZeroPadding decrypt",crypto.des_decrypt("ECB","ZERO",encodeStr,"12345678"))    
+        
+        originStr = "123456789"
+        --加密模式：ECB；填充方式：Pkcs5Padding；密钥：12345678
+        encodeStr = crypto.des_encrypt("ECB","PKCS5",originStr,"12345678")
+        print(originStr,"DES ECB Pkcs5Padding encrypt",string.toHex(encodeStr))
+        log.info("DES ECB Pkcs5Padding decrypt",crypto.des_decrypt("ECB","PKCS5",encodeStr,"12345678"))    
+        
+        originStr = "123456789"
+        --加密模式：ECB；填充方式：Pkcs7Padding；密钥：12345678
+        encodeStr = crypto.des_encrypt("ECB","PKCS7",originStr,"12345678")
+        print(originStr,"DES ECB Pkcs7Padding encrypt",string.toHex(encodeStr))
+        log.info("DES ECB Pkcs7Padding decrypt",crypto.des_decrypt("ECB","PKCS7",encodeStr,"12345678"))
+        
+        originStr = ("31323334353637383900000000000000"):fromHex()
+        --加密模式：ECB；填充方式：NONE；密钥：12345678
+        encodeStr = crypto.des_encrypt("ECB","NONE",originStr,"12345678")
+        print(originStr,"DES ECB NonePadding encrypt",string.toHex(encodeStr))
+        log.info("DES ECB NonePadding decrypt",string.toHex(crypto.des_decrypt("ECB","NONE",encodeStr,"12345678")))
+   
+        
+    end
+end
+
+--0038以及之后的8955F或者8955F_FLOAT版本才支持rsa算法
+local function rsaTest()
+    --local plainStr = "1234567890asdfghjklzxcvbnm"
+    local plainStr = "firmId=10015&model=zw-sp300&sn=W01201910300000108&version=1.0.0"
+    
+    --公钥加密(2048bit，这个bit与实际公钥的bit要保持一致)
+    local encryptStr = crypto.rsa_encrypt("PUBLIC_KEY",io.readFile("/ldata/public.key"),2048,"PUBLIC_CRYPT",plainStr)
+    log.info("rsaTest.encrypt",encryptStr:toHex())
+    --私钥解密(2048bit，这个bit与实际私钥的bit要保持一致)
+    local decryptStr = crypto.rsa_decrypt("PRIVATE_KEY",io.readFile("/ldata/private.key"),2048,"PRIVATE_CRYPT",encryptStr)
+    log.info("rsaTest.decrypt",decryptStr) --此处的decryptStr应该与plainStr相同
+    
+    
+    --私钥签名(2048bit，这个bit与实际私钥的bit要保持一致)
+    local signStr = crypto.rsa_sha256_sign("PRIVATE_KEY",io.readFile("/ldata/private.key"),2048,"PRIVATE_CRYPT",plainStr)
+    log.info("rsaTest.signStr",signStr:toHex())
+    --公钥验签(2048bit，这个bit与实际公钥的bit要保持一致)
+    local verifyResult = crypto.rsa_sha256_verify("PUBLIC_KEY",io.readFile("/ldata/public.key"),2048,"PUBLIC_CRYPT",signStr,plainStr)
+    log.info("rsaTest.verify",verifyResult)
+    
+    
+    
+    --私钥解密某个客户的公钥加密密文
+    encryptStr = string.fromHex("af750a8c95f9d973a033686488197cffacb8c1b2b5a15ea8779a48a72a1cdb2f9c948fe5ce0ac231a16de16b5fb609f62ec81c7646c1f018e333860627b5d4853cfe77f71ea7e4573323905faf0a759d59729d2afb80e46ff1f1b715227b599a14f3b9feb676f1feb1c2acd97f4d494124237a720ca781a16a2b600c17e348a5fdd3c374384276147b93ce93cc5a005a0aaf1581cdb7d58bfa84b4e4d7263efc02bf7ad80b15937ce8b37ced4e1ef8899be5c2a7d338cb5c4784c6b8a1cb31e7ecd1ec48597a02050b1190a3e13f2253a35e8cbc094c0af28b968f05a7f946a7a8cf3f9da2013d53ee51ca74279f8f36662e093b37db83caef5b18b666d405d4")
+    decryptStr = crypto.rsa_decrypt("PRIVATE_KEY",io.readFile("/ldata/private.key"),2048,"PRIVATE_CRYPT",encryptStr)
+    log.info("rsaTest.decrypt",decryptStr)
+    
+    --公钥验签某个客户的私钥签名密文
+    signStr = string.fromHex("7251fd625c01ac41e277d11b5b795962ba42d89a645eb9fe2241b2d8a9b6b5b6ea70e23e6933ef1324495749abde0e31eaf4fefe6d09f9270c0510790bd6075595717522539b7b70b798bdc216dae3873389644d73b04ecaeb01b25831904955a891d2459334a3f9f1e4558f7f99906c35f94c377f7f95cf0d3e062d8eb513fd723ad8b3981027b09126fbeb72d5fe4554a32b9c270f8f46032ede59387769b1fb090f0b4be15aaac2744a666dfbde7c04e02979f1c1b4e4c0f23c6bb9f60941312850caf41442d68ad7c9e939b7305ac6712ad31427f1c1d7b4f68001df9ce03367bd35e401a420f526aee3c96c2caaccb9a8db09b30930172b4c2847725d05")
+    verifyResult = crypto.rsa_sha256_verify("PUBLIC_KEY",io.readFile("/ldata/public.key"),2048,"PUBLIC_CRYPT",signStr,"firmId=10015&model=zw-sp300&sn=W01201910300000108&version=1.0.0")
+    log.info("rsaTest.verifyResult customer",verifyResult)
+end
+
 --- 算法测试入口
 -- @return 无
 -- @usage test()
@@ -333,12 +410,15 @@ local function test()
     md5Test()
     hmacSha1Test()
     sha1Test()
-    --sha256Test()
+    sha256Test()
     crcTest()
     aesTest()
+    desTest()
     flowMd5Test()
+    hmacSha256Test()
     --xxtea 需要lod打开支持
     xxteaTest()
+    pcall(rsaTest)
 end
 
 sys.timerStart(test,5000)

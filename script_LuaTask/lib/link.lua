@@ -19,6 +19,10 @@ function isReady() return ready end
 -- apn，用户名，密码
 local apnname, username, password
 local dnsIP
+--发送模式
+--0：慢发
+--1：快发
+local sendMode = 0
 
 function setAPN(apn, user, pwd)
     apnname, username, password = apn, user, pwd
@@ -78,7 +82,7 @@ ril.regUrc("STATE", function(data)
         return
     elseif status == "IP INITIAL" then
         if net.getState() ~= 'REGISTERED' then return end
-        request(string.format('AT+CSTT="%s","%s","%s"', apnname, username, password))
+        request(string.format('AT+CSTT="%s","%s","%s"', apnname, username or "", password or ""))
         request("AT+CIICR")
     elseif status == "IP START" then
         request("AT+CIICR")
@@ -115,8 +119,12 @@ local function initial()
         request("AT+CIICRMODE=2") --ciicr异步
         request("AT+CIPMUX=1") --多链接
         request("AT+CIPHEAD=1")
-        request("AT+CIPQSEND=0") --发送模式
+        request("AT+CIPQSEND="..sendMode) --发送模式
     end
+end
+
+function setSendMode(mode)
+    sendMode = mode or 0
 end
 
 -- 网络注册成功 发起GPRS附着状态查询

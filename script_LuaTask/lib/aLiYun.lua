@@ -14,6 +14,8 @@ module(..., package.seeall)
 
 local sProductKey,sProductSecret,sGetDeviceNameFnc,sGetDeviceSecretFnc,sSetDeviceSecretFnc
 local sKeepAlive,sCleanSession,sWill
+local isSleep--休眠，不去重连服务器
+local sErrHandleCo,sErrHandleCb,sErrHandleTmout
 
 local outQueue =
 {
@@ -42,9 +44,9 @@ local function procSubscribe(client)
 end
 
 local function procReceive(client)
-    local r,data
+    local r,data,s
     while true do
-        r,data = client:receive(2000)
+        r,data,s = client:receive(60000,"aliyun_publish_ind")
         --接收到数据
         if r and data~="timeout" then
             log.info("aLiYun.procReceive",data.topic,string.toHex(data.payload))
@@ -54,17 +56,23 @@ local function procReceive(client)
                     aLiYunOta.upgrade(data.payload)
                 end
             --其他消息
-            else    
+            else
                 if evtCb["receive"] then evtCb["receive"](data.topic,data.qos,data.payload) end
             end
-            
+
             --如果有等待发送的数据，则立即退出本循环
             if #outQueue["PUBLISH"]>0 then return true,"procReceive" end
+        elseif data == "aliyun_publish_ind" and s:find("disconnect") then--主动断开
+            client:disconnect()
+            return false,"procReceive"
+        elseif data == "aliyun_publish_ind" and s:find("send") then--来数据要发了
+            log.info("aliyun aliyun_publish_ind")
+            return true,"procReceive"
         else
             break
         end
     end
-	
+
     return data=="timeout" or r,"procReceive"
 end
 
@@ -78,34 +86,66 @@ local function procSend(client)
     return true,"procSend"
 end
 
+--- 断开阿里云物联网套件的连接，并且不再重连
+-- @return nil
+-- @usage
+-- aLiYun.sleep()
+function sleep()
+    isSleep = true
+    log.info("aLiYun.sleep","open sleep, stop try reconnect")
+    sys.publish("aliyun_publish_ind","disconnect")
+end
+
+--- 重新打开阿里云物联网套件的连接
+-- @return nil
+-- @usage
+-- aLiYun.wakeup()
+function wakeup()
+    isSleep = false
+    sys.publish("ALITUN_WAKEUP")
+    log.info("aLiYun.wakeup","exit sleep")
+end
+
+--- 查看打开阿里云物联网套件的是否允许连接状态
+-- @return bool 是否允许连接阿里云
+-- @usage
+-- local ar = aLiYun.sleepStatus()
+function sleepStatus()
+    return isSleep
+end
+
 function clientDataTask(host,tPorts,clientId,user,password)
     local retryConnectCnt = 0
     local portIdx = 0
     while true do
+        if isSleep then sys.waitUntil("ALITUN_WAKEUP") end
+
         if not socket.isReady() then
             retryConnectCnt = 0
             --等待网络环境准备就绪，超时时间是5分钟
             sys.waitUntil("IP_READY_IND",300000)
         end
-        
+
         if socket.isReady() then
             local mqttClient = mqtt.client(clientId,sKeepAlive or 240,user,password,sCleanSession,sWill)
             portIdx = portIdx%(#tPorts)+1
-            
+
             if mqttClient:connect(host,tonumber(tPorts[portIdx]),"tcp_ssl") then
                 retryConnectCnt = 0
                 if aLiYunOta and aLiYunOta.connectCb then aLiYunOta.connectCb(true,sProductKey,sGetDeviceNameFnc()) end
                 if evtCb["connect"] then evtCb["connect"](true) end
 
                 local result,prompt = procSubscribe(mqttClient)
+                outQueue["SUBSCRIBE"] = {}
                 if result then
-                    local procs,k,v = {procReceive,procSend}
+                    local procs,k,v = {procSend,procReceive}
                     while true do
                         for k,v in pairs(procs) do
                             result,prompt = v(mqttClient)
                             if not result then log.warn("aLiYun.clientDataTask."..prompt.." error") break end
                         end
                         if not result then break end
+                        if sErrHandleCo then coroutine.resume(sErrHandleCo,"feed") end
                     end
                 else
                     log.warn("aLiYun.clientDataTask."..prompt.." error")
@@ -119,7 +159,7 @@ function clientDataTask(host,tPorts,clientId,user,password)
                 if evtCb["connect"] then evtCb["connect"](false) end
             else
                 retryConnectCnt = retryConnectCnt+1
-            end          
+            end
 
             mqttClient:disconnect()
             if retryConnectCnt>=5 then link.shut() retryConnectCnt=0 end
@@ -143,7 +183,7 @@ local function getDeviceSecretCb(result,prompt,head,body)
         end
     end
     sys.publish("GetDeviceSecretEnd")
-    
+
 end
 
 local function authCbFnc(result,statusCode,head,body)
@@ -173,7 +213,7 @@ function clientAuthTask()
             http.request("POST",
                      "https://iot-auth.cn-shanghai.aliyuncs.com/auth/devicename",
                      nil,{["Content-Type"]="application/x-www-form-urlencoded"},authBody,20000,authCbFnc)
-                     
+
             local _,result,statusCode,body = sys.waitUntil("ALIYUN_AUTH_IND")
             --log.info("aLiYun.clientAuthTask1",result and statusCode=="200",body)
             if result and statusCode=="200" then
@@ -190,14 +230,14 @@ function clientAuthTask()
                                 table.insert(ports,tJsonDecode["data"]["resources"]["mqtt"]["port"])
                             end
                         end
-                        
-                        sys.taskInit(clientDataTask,returnMqtt and host or sProductKey..".iot-as-mqtt.cn-shanghai.aliyuncs.com",#ports~=0 and ports or {1883},sGetDeviceNameFnc(),tJsonDecode["data"]["iotId"],tJsonDecode["data"]["iotToken"])	
+
+                        sys.taskInit(clientDataTask,returnMqtt and host or sProductKey..".iot-as-mqtt.cn-shanghai.aliyuncs.com",#ports~=0 and ports or {1883},sGetDeviceNameFnc(),tJsonDecode["data"]["iotId"],tJsonDecode["data"]["iotToken"])
                         return
                     end
                 end
             end
-            
-            if sProductSecret then                
+
+            if sProductSecret then
                 http.request("POST","https://iot-auth.cn-shanghai.aliyuncs.com/auth/register/device",nil,
                     {['Content-Type']="application/x-www-form-urlencoded"},
                     getBody("register"),30000,getDeviceSecretCb)
@@ -211,7 +251,7 @@ function clientAuthTask()
                 break
             end
         end
-        
+
         if evtCb["auth"] then evtCb["auth"](false) end
         sys.wait(5000)
     end
@@ -271,6 +311,8 @@ end
 -- aLiYun.publish("/b0FMK1Ga5cp/862991234567890/update","test",1,cbFnc,"cbFncPara")
 function publish(topic,payload,qos,cbFnc,cbPara)
     insert("PUBLISH",topic,qos,payload,cbFnc,cbPara)
+    sys.publish("aliyun_publish_ind","send")
+    log.info("aliyun aliyun_publish_ind","publish")
 end
 
 --- 注册事件的处理函数
@@ -287,4 +329,24 @@ end
 -- aLiYun.on("b0FMK1Ga5cp",nil,getDeviceNameFnc,getDeviceSecretFnc)
 function on(evt,cbFnc)
 	evtCb[evt] = cbFnc
+end
+
+--- 设置阿里云task连续一段时间工作异常的处理程序
+-- @function cbFnc，异常处理函数，cbFnc的调用形式为：cbFnc()
+-- @number[opt=150] tmout，连续工作异常的时间，当连续异常到达这个时间之后，会调用cbFnc()
+-- @return nil
+-- @usage
+-- aLiYun.setErrHandle(function() sys.restart("ALIYUN_TASK_INACTIVE") end, 300)
+function setErrHandle(cbFnc,tmout)
+    sErrHandleCb = cbFnc
+    sErrHandleTmout = tmout or 150
+    if not sErrHandleCo then
+        sErrHandleCo = sys.taskInit(function()
+            while true do
+                if sys.wait(sErrHandleTmout*1000) == nil then
+                    sErrHandleCb()
+                end
+            end
+        end)
+    end
 end

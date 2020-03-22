@@ -38,6 +38,7 @@
 
 <h2>Modules</h2>
 <ul class="nowrap">
+  <li><a href="../modules/aLiPay.html">aLiPay</a></li>
   <li><a href="../modules/aLiYun.html">aLiYun</a></li>
   <li><a href="../modules/aLiYunOta.html">aLiYunOta</a></li>
   <li><a href="../modules/agps.html">agps</a></li>
@@ -50,6 +51,7 @@
   <li><a href="../modules/gizwits.html">gizwits</a></li>
   <li><a href="../modules/gps.html">gps</a></li>
   <li><a href="../modules/gpsv2.html">gpsv2</a></li>
+  <li><a href="../modules/gpsv3.html">gpsv3</a></li>
   <li><a href="../modules/http.html">http</a></li>
   <li><a href="../modules/httpv2.html">httpv2</a></li>
   <li><a href="../modules/lbsLoc.html">lbsLoc</a></li>
@@ -90,7 +92,7 @@
     <h3>Info:</h3>
     <ul>
         <li><strong>Copyright</strong>: openLuat</li>
-        <li><strong>Release</strong>: 2017.10.19</li>
+        <li><strong>Release</strong>: 2019.01.05</li>
         <li><strong>License</strong>: MIT</li>
         <li><strong>Author</strong>: openLuat</li>
     </ul>
@@ -111,16 +113,46 @@
 	<td class="summary">将HEX字符串转成Lua字符串，如"313233616263"转为"123abc", 函数里加入了过滤分隔符，可以过滤掉大部分分隔符（可参见正则表达式中\s和\p的范围）。</td>
 	</tr>
 	<tr>
+	<td class="name" nowrap><a href="#string.toValue">
+    string.toValue (str)
+    </a></td>
+	<td class="summary">返回字符串tonumber的转义字符串(用来支持超过31位整数的转换)</td>
+	</tr>
+	<tr>
 	<td class="name" nowrap><a href="#string.utf8Len">
     string.utf8Len (str)
     </a></td>
 	<td class="summary">返回utf8编码字符串的长度</td>
 	</tr>
 	<tr>
+	<td class="name" nowrap><a href="#string.utf8ToTable">
+    string.utf8ToTable (str)
+    </a></td>
+	<td class="summary">返回utf8编码字符串的单个utf8字符的table</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#string.rawurlEncode">
+    string.rawurlEncode (str)
+    </a></td>
+	<td class="summary">返回字符串的 RFC3986 编码</td>
+	</tr>
+	<tr>
 	<td class="name" nowrap><a href="#string.urlEncode">
     string.urlEncode (str)
     </a></td>
 	<td class="summary">返回字符串的urlEncode编码</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#table.gsort">
+    table.gsort (t, f)
+    </a></td>
+	<td class="summary">返回一个迭代器函数,每次调用函数都会返回hash表的排序后的键值对</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#table.rconcat">
+    table.rconcat (l)
+    </a></td>
+	<td class="summary">table.concat的增强版，支持嵌套字符串数组</td>
 	</tr>
 	<tr>
 	<td class="name" nowrap><a href="#string.formatNumberThousands">
@@ -163,6 +195,12 @@
     io.fileSize (path)
     </a></td>
 	<td class="summary">返回文件大小</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#io.readStream">
+    io.readStream (path, offset, len)
+    </a></td>
+	<td class="summary">返回指定位置读取的字符串</td>
 	</tr>
 </table>
 
@@ -245,7 +283,42 @@
     <h3>Usage:</h3>
     <ul>
         <li><pre class="example"><span class="global">string</span>.fromHex(<span class="string">"010203"</span>)       -&gt;  <span class="string">"\1\2\3"</span>
-<span class="global">string</span>.fromHex(<span class="string">"313233616263:) -&gt;  "</span><span class="number">123</span>abc"</pre></il>
+<span class="global">string</span>.fromHex(<span class="string">"313233616263"</span>) -&gt;  <span class="string">"123abc"</span></pre></il>
+    </ul>
+
+</dd>
+    <dt>
+    <a name = "string.toValue"></a>
+    <strong  style="color: red;">
+    string.toValue (str)
+    </strong>
+    </dt>
+    <dd>
+    <pre class="example"  style="color: red;">返回字符串tonumber的转义字符串(用来支持超过31位整数的转换)</pre>
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">str</span>
+            <span class="types"><a class="type" href="https://www.lua.org/manual/5.1/manual.html#5.4">string</a></span>
+        <pre class="example"> 输入字符串</pre>
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+        <li>
+        <pre class="example">str 转换后的lua 二进制字符串</pre></li>
+        <li>
+        <pre class="example">len 转换了多少个字符</pre></li>
+    </ol>
+
+
+
+    <h3>Usage:</h3>
+    <ul>
+        <li><pre class="example"><span class="global">string</span>.toValue(<span class="string">"123456"</span>) -&gt; <span class="string">"\1\2\3\4\5\6"</span>  <span class="number">6</span>
+<span class="global">string</span>.toValue(<span class="string">"123abc"</span>) -&gt; <span class="string">"\1\2\3\a\b\c"</span>  <span class="number">6</span></pre></il>
     </ul>
 
 </dd>
@@ -277,7 +350,72 @@
 
     <h3>Usage:</h3>
     <ul>
-        <li><pre class="example"><span class="keyword">local</span> cnt = <span class="global">string</span>.utf8Len(<span class="string">"中国"</span>),str = <span class="number">2</span></pre></il>
+        <li><pre class="example"><span class="keyword">local</span> cnt = <span class="global">string</span>.utf8Len(<span class="string">"中国a"</span>),cnt == <span class="number">3</span></pre></il>
+    </ul>
+
+</dd>
+    <dt>
+    <a name = "string.utf8ToTable"></a>
+    <strong  style="color: red;">
+    string.utf8ToTable (str)
+    </strong>
+    </dt>
+    <dd>
+    <pre class="example"  style="color: red;">返回utf8编码字符串的单个utf8字符的table</pre>
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">str</span>
+            <span class="types"><a class="type" href="https://www.lua.org/manual/5.1/manual.html#5.4">string</a></span>
+        <pre class="example">utf8编码的字符串,支持中文</pre>
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ul>
+        <li>
+        <pre class="example">table,utf8字符串的table</pre></il>
+    </ul>
+
+
+
+    <h3>Usage:</h3>
+    <ul>
+        <li><pre class="example"><span class="keyword">local</span> t = <span class="global">string</span>.utf8ToTable(<span class="string">"中国2018"</span>)</pre></il>
+    </ul>
+
+</dd>
+    <dt>
+    <a name = "string.rawurlEncode"></a>
+    <strong  style="color: red;">
+    string.rawurlEncode (str)
+    </strong>
+    </dt>
+    <dd>
+    <pre class="example"  style="color: red;">返回字符串的 RFC3986 编码</pre>
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">str</span>
+            <span class="types"><a class="type" href="https://www.lua.org/manual/5.1/manual.html#5.4">string</a></span>
+        <pre class="example">要转换编码的字符串,支持UTF8编码中文</pre>
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ul>
+        <li>
+        <pre class="example">str, RFC3986 编码的字符串</pre></il>
+    </ul>
+
+
+
+    <h3>Usage:</h3>
+    <ul>
+        <li><pre class="example"><span class="keyword">local</span> str = <span class="global">string</span>.rawurlEncode(<span class="string">"####133"</span>) ,str == <span class="string">"%23%23%23%23133"</span></pre></il>
+        <li><pre class="example"><span class="keyword">local</span> str = <span class="global">string</span>.rawurlEncode(<span class="string">"中国2018"</span>) , str == <span class="string">"%e4%b8%ad%e5%9b%bd2018"</span></pre></il>
     </ul>
 
 </dd>
@@ -295,7 +433,7 @@
     <ul>
         <li><span class="parameter">str</span>
             <span class="types"><a class="type" href="https://www.lua.org/manual/5.1/manual.html#5.4">string</a></span>
-        <pre class="example">要转换编码的字符串</pre>
+        <pre class="example">要转换编码的字符串,支持UTF8编码中文</pre>
         </li>
     </ul>
 
@@ -309,7 +447,76 @@
 
     <h3>Usage:</h3>
     <ul>
-        <li><pre class="example"><span class="global">string</span>.urlEncode(<span class="string">"####133"</span>)</pre></il>
+        <li><pre class="example"><span class="keyword">local</span> str = <span class="global">string</span>.urlEncode(<span class="string">"####133"</span>) ,str == <span class="string">"%23%23%23%23133"</span></pre></il>
+        <li><pre class="example"><span class="keyword">local</span> str = <span class="global">string</span>.urlEncode(<span class="string">"中国2018"</span>) , str == <span class="string">"%e4%b8%ad%e5%9b%bd2018"</span></pre></il>
+    </ul>
+
+</dd>
+    <dt>
+    <a name = "table.gsort"></a>
+    <strong  style="color: red;">
+    table.gsort (t, f)
+    </strong>
+    </dt>
+    <dd>
+    <pre class="example"  style="color: red;">返回一个迭代器函数,每次调用函数都会返回hash表的排序后的键值对</pre>
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">t</span>
+            <span class="types"><a class="type" href="https://www.lua.org/manual/5.1/manual.html#5.5">table</a></span>
+        <pre class="example"> 要排序的hash表</pre>
+        </li>
+        <li><span class="parameter">f</span>
+        <pre class="example"> 自定义排序函数</pre>
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ul>
+        <li>
+        <pre class="example">function.</pre></il>
+    </ul>
+
+
+
+    <h3>Usage:</h3>
+    <ul>
+        <li><pre class="example">test = {a=<span class="number">1</span>,f=<span class="number">9</span>,d=<span class="number">2</span>,c=<span class="number">8</span>,b=<span class="number">5</span>}</pre></il>
+        <li><pre class="example"><span class="keyword">for</span> name,line <span class="keyword">in</span> pairsByKeys(test) <span class="keyword">do</span> <span class="global">print</span>(name,line) <span class="keyword">end</span></pre></il>
+    </ul>
+
+</dd>
+    <dt>
+    <a name = "table.rconcat"></a>
+    <strong  style="color: red;">
+    table.rconcat (l)
+    </strong>
+    </dt>
+    <dd>
+    <pre class="example"  style="color: red;">table.concat的增强版，支持嵌套字符串数组</pre>
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">l</span>
+            <span class="types"><a class="type" href="https://www.lua.org/manual/5.1/manual.html#5.5">table</a></span>
+        <pre class="example">嵌套字符串数组</pre>
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ul>
+        <li>
+        <pre class="example">string</pre></il>
+    </ul>
+
+
+
+    <h3>Usage:</h3>
+    <ul>
+        <li><pre class="example"><span class="global">print</span>(<span class="global">table</span>.rconcat({<span class="string">"a"</span>,{<span class="string">" nice "</span>},<span class="string">" and "</span>, {{<span class="string">" long "</span>},{<span class="string">" list "</span>}}}))</pre></il>
     </ul>
 
 </dd>
@@ -549,6 +756,42 @@
     </ul>
 
 </dd>
+    <dt>
+    <a name = "io.readStream"></a>
+    <strong  style="color: red;">
+    io.readStream (path, offset, len)
+    </strong>
+    </dt>
+    <dd>
+    <pre class="example"  style="color: red;">返回指定位置读取的字符串</pre>
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">path</span>
+            <span class="types"><a class="type" href="https://www.lua.org/manual/5.1/manual.html#5.4">string</a></span>
+        <pre class="example">文件路径全名例如:"/ldata/call.txt"</pre>
+        </li>
+        <li><span class="parameter">offset</span>
+            <span class="types"><span class="type">number</span></span>
+        <pre class="example">要读取的指定位置</pre>
+        </li>
+        <li><span class="parameter">len</span>
+            <span class="types"><span class="type">number</span></span>
+        <pre class="example">要读取的字节数</pre>
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ul>
+        <li>
+        <pre class="example">string,返回要读取的数据,读取失败返回nil</pre></il>
+    </ul>
+
+
+
+
+</dd>
 </dl>
 
 
@@ -556,7 +799,7 @@
 </div> <!-- id="main" -->
 <div id="about">
 <i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.6</a></i>
-<i style="float:right;">Last updated 2018-11-07 18:24:40 </i>
+<i style="float:right;">Last updated 2019-11-19 10:46:53 </i>
 </div> <!-- id="about" -->
 </div> <!-- id="container" -->
 </body>

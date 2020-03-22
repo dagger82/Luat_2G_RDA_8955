@@ -17,7 +17,7 @@ local socketsSsl = {}
 -- 单次发送数据最大值
 local SENDSIZE = 1460
 -- 缓冲区最大下标
-local INDEX_MAX = 49
+local INDEX_MAX = 256
 
 --用户自定义的DNS解析器
 local dnsParser
@@ -40,26 +40,37 @@ local function socketStatusNtfy()
     sys.publish("SOCKET_ACTIVE", isSocketActive() or isSocketActive(true))
 end
 
-local function stopSslConnectTimer(tSocket,id)
-    if id and tSocket[id].ssl and tSocket[id].co and coroutine.status(tSocket[id].co) == "suspended" and tSocket[id].wait=="+SSLCONNECT" then
-        sys.timerStop(coroutine.resume,tSocket[id].co,false,"TIMEOUT")
+local function stopConnectTimer(tSocket, id)
+    if id and tSocket[id] and tSocket[id].co and coroutine.status(tSocket[id].co) == "suspended"
+        and (tSocket[id].wait == "+SSLCONNECT" or tSocket[id].wait == "+CIPSTART") then
+        -- and (tSocket[id].wait == "+SSLCONNECT" or (tSocket[id].protocol == "UDP" and tSocket[id].wait == "+CIPSTART")) then
+        sys.timerStop(coroutine.resume, tSocket[id].co, false, "TIMEOUT")
     end
 end
 
 local function errorInd(error)
+    local coSuspended = {}
+    
     for k, v in pairs({sockets, socketsSsl}) do
         --if #v ~= 0 then
-            for _, c in pairs(v) do -- IP状态出错时，通知所有已连接的socket
-                --if c.connected or c.created then
-                if error == 'CLOSED' and not c.ssl then c.connected = false socketStatusNtfy() end
-                c.error = error
-                if c.co and coroutine.status(c.co) == "suspended" then
-                    stopSslConnectTimer(v, c.id)
-                    coroutine.resume(c.co, false)
-                end
-            --end
+        for _, c in pairs(v) do -- IP状态出错时，通知所有已连接的socket
+            --if c.connected or c.created then
+            if error == 'CLOSED' and not c.ssl then c.connected = false socketStatusNtfy() end
+            c.error = error
+            if c.co and coroutine.status(c.co) == "suspended" then
+                stopConnectTimer(v, c.id)
+                --coroutine.resume(c.co, false)
+                table.insert(coSuspended, c.co)
             end
         --end
+        end
+    --end
+    end
+    
+    for k, v in pairs(coSuspended) do
+        if v and coroutine.status(v) == "suspended" then
+            coroutine.resume(v, false)
+        end
     end
 end
 
@@ -74,10 +85,9 @@ local function onSocketURC(data, prefix)
         log.error('socket: urc on nil socket', data, id, tSocket[id], socketsSsl[id])
         return
     end
-    
     if result == "CONNECT OK" or result:match("CONNECT ERROR") or result:match("CONNECT FAIL") then
         if tSocket[id].wait == "+CIPSTART" or tSocket[id].wait == "+SSLCONNECT" then
-            stopSslConnectTimer(tSocket,id)
+            stopConnectTimer(tSocket, id)
             coroutine.resume(tSocket[id].co, result == "CONNECT OK")
         else
             log.error("socket: error urc", tSocket[id].wait)
@@ -90,12 +100,13 @@ local function onSocketURC(data, prefix)
     if string.find(result, "ERROR") or result == "CLOSED" then
         if result == 'CLOSED' and not tSocket[id].ssl then tSocket[id].connected = false socketStatusNtfy() end
         tSocket[id].error = result
-        stopSslConnectTimer(tSocket,id)
+        stopConnectTimer(tSocket, id)
         coroutine.resume(tSocket[id].co, false)
     end
 end
 -- 创建socket函数
-local mt = {__index = {}}
+local mt = {}
+mt.__index = mt
 local function socket(protocol, cert)
     local ssl = protocol:match("SSL")
     local id = table.remove(ssl and validSsl or valid)
@@ -117,7 +128,11 @@ local function socket(protocol, cert)
         cert = cert,
         co = co,
         input = {},
+        output = {},
         wait = "",
+        connected = false,
+        iSubscribe = false,
+        subMessage = nil,
     }
     
     tSocket = (ssl and socketsSsl or sockets)
@@ -190,8 +205,9 @@ end
 -- @string address 服务器地址，支持ip和域名
 -- @param port string或者number类型，服务器端口
 -- @return bool result true - 成功，false - 失败
--- @usage  c = socket.tcp(); c:connect();
-function mt.__index:connect(address, port)
+-- @number timeout, 链接服务器最长超时时间
+-- @usage  c = socket.tcp(); c:connect("www.baidu.com",80,5);
+function mt:connect(address, port, timeout)
     assert(self.co == coroutine.running(), "socket:connect: coroutine mismatch")
     
     if not link.isReady() then
@@ -203,7 +219,8 @@ function mt.__index:connect(address, port)
         log.info("socket:connect: call exist, cannot connect")
         return false
     end
-    
+    self.address = address
+    self.port = port
     if self.ssl then
         local tConfigCert, i = {}
         if self.cert then
@@ -222,17 +239,17 @@ function mt.__index:connect(address, port)
         end
         
         sslInit()
-        self.address = address
         req(string.format("AT+SSLCREATE=%d,\"%s\",%d", self.id, address .. ":" .. port, (self.cert and self.cert.caCert) and 0 or 1))
         self.created = true
         for i = 1, #tConfigCert do
             req(tConfigCert[i])
         end
         req("AT+SSLCONNECT=" .. self.id)
-        sys.timerStart(coroutine.resume,120000,self.co,false,"TIMEOUT")
     else
         req(string.format("AT+CIPSTART=%d,\"%s\",\"%s\",%s", self.id, self.protocol, address, port))
     end
+    -- if self.ssl or self.protocol == "UDP" then sys.timerStart(coroutine.resume, 120000, self.co, false, "TIMEOUT") end
+    sys.timerStart(coroutine.resume, (timeout or 120) * 1000, self.co, false, "TIMEOUT")
     
     ril.regUrc((self.ssl and "SSL&" or "") .. self.id, onSocketURC)
     self.wait = self.ssl and "+SSLCONNECT" or "+CIPSTART"
@@ -247,9 +264,9 @@ function mt.__index:connect(address, port)
         http.request("GET", "119.29.29.29/d?dn=" .. address, nil, nil, nil, 40000,
             function(result, statusCode, head, body)
                 log.info("socket.httpDnsCb", result, statusCode, head, body)
-                sys.publish("SOCKET_HTTPDNS_RESULT", result, statusCode, head, body)
+                sys.publish("SOCKET_HTTPDNS_RESULT_"..address.."_"..port, result, statusCode, head, body)
             end)
-        local _, result, statusCode, head, body = sys.waitUntil("SOCKET_HTTPDNS_RESULT")
+        local _, result, statusCode, head, body = sys.waitUntil("SOCKET_HTTPDNS_RESULT_"..address.."_"..port)
         
         --DNS解析成功
         if result and statusCode == "200" and body and body:match("^[%d%.]+") then
@@ -269,17 +286,87 @@ function mt.__index:connect(address, port)
     
     if r == false then
         if self.ssl then self:sslDestroy() end
+        sys.publish("LIB_SOCKET_CONNECT_FAIL_IND", self.ssl, self.protocol, address, port)
         return false
     end
     self.connected = true
     socketStatusNtfy()
     return true
 end
+
+--- 异步收发选择器
+-- @number keepAlive,服务器和客户端最大通信间隔时间,也叫心跳包最大时间,单位秒
+-- @string pingreq,心跳包的字符串
+-- @return boole,false 失败，true 表示成功
+function mt:asyncSelect(keepAlive, pingreq)
+    assert(self.co == coroutine.running(), "socket:asyncSelect: coroutine mismatch")
+    if self.error then
+        log.warn('socket.client:asyncSelect', 'error', self.error)
+        return false
+    end
+    
+    self.wait = "SOCKET_SEND"
+    while #self.output ~= 0 do
+        local data = table.concat(self.output)
+        self.output = {}
+        for i = 1, string.len(data), SENDSIZE do
+            -- 按最大MTU单元对data分包
+            local stepData = string.sub(data, i, i + SENDSIZE - 1)
+            --发送AT命令执行数据发送
+            req(string.format("AT+" .. (self.ssl and "SSL" or "CIP") .. "SEND=%d,%d", self.id, string.len(stepData)), stepData)
+            self.wait = self.ssl and "+SSLSEND" or "+CIPSEND"
+            if not coroutine.yield() then
+                if self.ssl then self:sslDestroy() end
+                sys.publish("LIB_SOCKET_SEND_FAIL_IND", self.ssl, self.protocol, self.address, self.port)
+                return false
+            end
+        end
+    end
+    self.wait = "SOCKET_WAIT"
+    sys.publish("SOCKET_SEND", self.id)
+    if keepAlive and keepAlive ~= 0 then
+        if type(pingreq) == "function" then
+            sys.timerStart(pingreq, keepAlive * 1000)
+        else
+            sys.timerStart(self.asyncSend, keepAlive * 1000, self, pingreq or "\0")
+        end
+    end
+    return coroutine.yield()
+end
+--- 异步发送数据
+-- @string data 数据
+-- @return result true - 成功，false - 失败
+-- @usage  c = socket.tcp(); c:connect(); c:asyncSend("12345678");
+function mt:asyncSend(data)
+    if self.error then
+        log.warn('socket.client:asyncSend', 'error', self.error)
+        return false
+    end
+    table.insert(self.output, data or "")
+    if self.wait == "SOCKET_WAIT" then coroutine.resume(self.co, true) end
+    return true
+end
+--- 异步接收数据
+-- @return nil, 表示没有收到数据
+-- @return data 如果是UDP协议，返回新的数据包,如果是TCP,返回所有收到的数据,没有数据返回长度为0的空串
+-- @usage c = socket.tcp(); c:connect()
+-- @usage data = c:asyncRecv()
+function mt:asyncRecv()
+    if #self.input == 0 then return "" end
+    if self.protocol == "UDP" then
+        return table.remove(self.input)
+    else
+        local s = table.concat(self.input)
+        self.input = {}
+        return s
+    end
+end
+
 --- 发送数据
 -- @string data 数据
 -- @return result true - 成功，false - 失败
 -- @usage  c = socket.tcp(); c:connect(); c:send("12345678");
-function mt.__index:send(data)
+function mt:send(data)
     assert(self.co == coroutine.running(), "socket:send: coroutine mismatch")
     if self.error then
         log.warn('socket.client:send', 'error', self.error)
@@ -290,7 +377,7 @@ function mt.__index:send(data)
         return false
     end
     
-    for i = 1, string.len(data), SENDSIZE do
+    for i = 1, string.len(data or ""), SENDSIZE do
         -- 按最大MTU单元对data分包
         local stepData = string.sub(data, i, i + SENDSIZE - 1)
         --发送AT命令执行数据发送
@@ -298,6 +385,7 @@ function mt.__index:send(data)
         self.wait = self.ssl and "+SSLSEND" or "+CIPSEND"
         if not coroutine.yield() then
             if self.ssl then self:sslDestroy() end
+            sys.publish("LIB_SOCKET_SEND_FAIL_IND", self.ssl, self.protocol, self.address, self.port)
             return false
         end
     end
@@ -306,33 +394,62 @@ end
 --- 接收数据
 -- @number[opt=0] timeout 可选参数，接收超时时间，单位毫秒
 -- @string[opt=nil] msg 可选参数，控制socket所在的线程退出recv阻塞状态
+-- @bool[opt=nil] msgNoResume 可选参数，控制socket所在的线程退出recv阻塞状态，false或者nil表示“在recv阻塞状态，收到msg消息，可以退出阻塞状态”，true表示不退出
 -- @return result 数据接收结果，true表示成功，false表示失败
 -- @return data 如果成功的话，返回接收到的数据；超时时返回错误为"timeout"；msg控制退出时返回msg的字符串
 -- @return param 如果是msg返回的false，则data的值是msg，param的值是msg的参数
 -- @usage c = socket.tcp(); c:connect()
 -- @usage result, data = c:recv()
 -- @usage false,msg,param = c:recv(60000,"publish_msg")
-function mt.__index:recv(timeout, msg)
+function mt:recv(timeout, msg, msgNoResume)
     assert(self.co == coroutine.running(), "socket:recv: coroutine mismatch")
     if self.error then
         log.warn('socket.client:recv', 'error', self.error)
         return false
     end
-    
+    self.msgNoResume = msgNoResume
+    if msg and not self.iSubscribe then
+        self.iSubscribe = msg
+        self.subMessage = function(data)
+            if data then table.insert(self.output, data) end
+            if (self.wait == "+RECEIVE" or self.wait == "+SSL RECEIVE") and not self.msgNoResume then
+                coroutine.resume(self.co, 0xAA)
+            end
+        end
+        sys.subscribe(msg, self.subMessage)
+    end
+    if msg and #self.output ~= 0 then sys.publish(msg, false) end
     if #self.input == 0 then
         self.wait = self.ssl and "+SSL RECEIVE" or "+RECEIVE"
         if timeout and timeout > 0 then
-            local r, s = sys.waitUntilExt(msg or tostring(self.co), timeout)
-            if not r then
+            local r, s = sys.wait(timeout)
+            -- if not r then
+            --     return false, "timeout"
+            -- elseif r and r == msg then
+            --     return false, r, s
+            -- else
+            --     if self.ssl and not r then self:sslDestroy() end
+            --     return r, s
+            -- end
+            if r == nil then
                 return false, "timeout"
-            elseif r and r == msg then
-                return false, r, s
+            elseif r == 0xAA then
+                local dat = table.concat(self.output)
+                self.output = {}
+                return false, msg, dat
             else
                 if self.ssl and not r then self:sslDestroy() end
                 return r, s
             end
         else
-            return coroutine.yield()
+            local r, s = coroutine.yield()
+            if r == 0xAA then
+                local dat = table.concat(self.output)
+                self.output = {}
+                return false, msg, dat
+            else
+                return r, s
+            end
         end
     end
     
@@ -345,7 +462,7 @@ function mt.__index:recv(timeout, msg)
     end
 end
 
-function mt.__index:sslDestroy()
+function mt:sslDestroy()
     assert(self.co == coroutine.running(), "socket:sslDestroy: coroutine mismatch")
     if self.ssl and (self.connected or self.created) then
         self.connected = false
@@ -359,12 +476,16 @@ end
 --- 销毁一个socket
 -- @return nil
 -- @usage  c = socket.tcp(); c:connect(); c:send("123"); c:close()
-function mt.__index:close()
+function mt:close(slow)
     assert(self.co == coroutine.running(), "socket:close: coroutine mismatch")
+    if self.iSubscribe then
+        sys.unsubscribe(self.iSubscribe, self.subMessage)
+        self.iSubscribe = false
+    end
     if self.connected or self.created then
         self.connected = false
         self.created = false
-        req((self.ssl and "AT+SSLDESTROY=" or "AT+CIPCLOSE=") .. self.id)
+        req(self.ssl and ("AT+SSLDESTROY=" .. self.id) or ("AT+CIPCLOSE=" .. self.id .. (slow and ",0" or "")))
         self.wait = self.ssl and "+SSLDESTROY" or "+CIPCLOSE"
         coroutine.yield()
         socketStatusNtfy()
@@ -398,8 +519,22 @@ local function onResponse(cmd, success, response, intermediate)
             -- CIPSTART,SSLCONNECT 返回OK只是表示被接受
             return
         end
-        if (prefix == '+CIPSEND' or prefix == "+SSLSEND") and response:match("%d, *([%u%d :]+)") ~= 'SEND OK' then
-            success = false
+        
+        if prefix == '+CIPSEND' then
+            if response:match("%d, *([%u%d :]+)") ~= 'SEND OK' then
+                local acceptLen = response:match("DATA ACCEPT:%d,(%d+)")
+                if acceptLen then
+                    if acceptLen ~= cmd:match("AT%+%u+=%d,(%d+)") then
+                        success = false
+                    end
+                else
+                    success = false
+                end
+            end
+        elseif prefix == "+SSLSEND" then
+            if response:match("%d, *([%u%d :]+)") ~= 'SEND OK' then
+                success = false
+            end
         end
         
         local reason, address
@@ -415,7 +550,7 @@ local function onResponse(cmd, success, response, intermediate)
         end
         
         if not reason and not success then tSocket[id].error = response end
-        stopSslConnectTimer(tSocket,id)
+        stopConnectTimer(tSocket, id)
         coroutine.resume(tSocket[id].co, success, reason)
     end
 end
@@ -431,11 +566,12 @@ local function onSocketReceiveUrc(urc)
         if string.len(data) >= len then -- at通道的内容比剩余未收到的数据多
             -- 截取网络发来的数据
             table.insert(cache, string.sub(data, 1, len))
-            -- 剩下的数据仍按at进行后续处理
+            -- 剩下的数据扔给at进行后续处理
             data = string.sub(data, len + 1, -1)
             if not tSocket[id] then
                 log.warn('socket: receive on nil socket', id)
             else
+                sys.publish("SOCKET_RECV", id)
                 local s = table.concat(cache)
                 if tSocket[id].wait == "+RECEIVE" or tSocket[id].wait == "+SSL RECEIVE" then
                     coroutine.resume(tSocket[id].co, true, s)
@@ -506,6 +642,39 @@ end
 -- @usage socket.setDnsParser(parserFnc)
 function setDnsParser(parserFnc)
     dnsParser = parserFnc
+end
+
+--- 设置数据发送模式（在网络准备就绪之前调用此接口设置）.
+-- 如果设置为快发模式，注意如下两点：
+-- 1、通过send接口发送的数据，如果成功发送到服务器，设备端无法获取到这个成功状态
+-- 2、通过send接口发送的数据，如果发送失败，设备端可以获取到这个失败状态
+-- 慢发模式可以获取到send接口发送的成功或者失败
+--
+-- ****************************************************************************************************************************************************************
+-- TCP协议发送数据时，数据发送出去之后，必须等到服务器返回TCP ACK包，才认为数据发送成功，在网络较差的情况下，这种ACK确认就会导致发送过程很慢。
+-- 从而导致用户程序后续的AT处理逻辑一直处于等待状态。例如执行AT+CIPSEND动作发送一包数据后，接下来要执行AT+QTTS播放TTS，但是CIPSEND一直等了1分钟才返回SEND OK，
+-- 这时AT+QTTS就会一直等待1分钟，可能不是程序中想看到的。
+-- 此时就可以设置为快发模式，AT+CIPSEND可以立即返回一个结果，此结果表示“数据是否被缓冲区所保存”，从而不影响后续其他AT指令的及时执行
+-- 
+-- AT版本可以通过AT+CIPQSEND指令、Luat版本可以通过socket.setSendMode接口设置发送模式为快发或者慢发
+-- 
+-- 快发模式下，在core中有一个1460*7=10220字节的缓冲区，要发送的数据首先存储到此缓冲区，然后在core中自动循环发送。
+-- 如果此缓冲区已满，则AT+CIPSEND会直接返回ERROR，socket:send接口也会直接返回失败
+-- 
+-- 同时满足如下几种条件，适合使用快发模式：
+-- 1.	发送的数据量小，并且发送频率低，数据发送速度远远不会超过core中的10220字节大小；
+--      没有精确地判断标准，可以简单的按照3分钟不超过10220字节来判断；曾经有一个不适合快发模式的例子如下：
+--      用户使用Luat版本的http上传一个几十K的文件，设置了快发模式，导致一直发送失败，因为循环的向core中的缓冲区插入数据，
+--      插入数据的速度远远超过发送数据到服务器的速度，所以很快就导致缓冲区慢，再插入数据时，就直接返回失败
+-- 2.	对每次发送的数据，不需要确认发送结果
+-- 3.	数据发送功能不能影响其他功能的及时响应
+-- ****************************************************************************************************************************************************************
+--
+-- @number[opt=0] mode，数据发送模式，0表示慢发，1表示快发
+-- @return nil
+-- @usage socket.setSendMode(1)
+function setSendMode(mode)
+    link.setSendMode(mode)
 end
 
 setTcpResendPara(4, 16)

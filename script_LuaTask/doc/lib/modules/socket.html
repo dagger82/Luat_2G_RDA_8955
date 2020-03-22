@@ -39,6 +39,7 @@
 
 <h2>Modules</h2>
 <ul class="nowrap">
+  <li><a href="../modules/aLiPay.html">aLiPay</a></li>
   <li><a href="../modules/aLiYun.html">aLiYun</a></li>
   <li><a href="../modules/aLiYunOta.html">aLiYunOta</a></li>
   <li><a href="../modules/agps.html">agps</a></li>
@@ -51,6 +52,7 @@
   <li><a href="../modules/gizwits.html">gizwits</a></li>
   <li><a href="../modules/gps.html">gps</a></li>
   <li><a href="../modules/gpsv2.html">gpsv2</a></li>
+  <li><a href="../modules/gpsv3.html">gpsv3</a></li>
   <li><a href="../modules/http.html">http</a></li>
   <li><a href="../modules/httpv2.html">httpv2</a></li>
   <li><a href="../modules/lbsLoc.html">lbsLoc</a></li>
@@ -112,26 +114,44 @@
 	<td class="summary">创建基于UDP的socket对象</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#mt.__index:connect">
-    mt.__index:connect (address, port)
+	<td class="name" nowrap><a href="#mt:connect">
+    mt:connect (address, port, timeout)
     </a></td>
 	<td class="summary">连接服务器</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#mt.__index:send">
-    mt.__index:send (data)
+	<td class="name" nowrap><a href="#mt:asyncSelect">
+    mt:asyncSelect (keepAlive, pingreq)
+    </a></td>
+	<td class="summary">异步收发选择器</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#mt:asyncSend">
+    mt:asyncSend (data)
+    </a></td>
+	<td class="summary">异步发送数据</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#mt:asyncRecv">
+    mt:asyncRecv ()
+    </a></td>
+	<td class="summary">异步接收数据</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#mt:send">
+    mt:send (data)
     </a></td>
 	<td class="summary">发送数据</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#mt.__index:recv">
-    mt.__index:recv (<strong  style="color: gray;">[timeout=0]</strong><strong  style="color: gray;">[, msg=nil]</strong>)
+	<td class="name" nowrap><a href="#mt:recv">
+    mt:recv (<strong  style="color: gray;">[timeout=0]</strong><strong  style="color: gray;">[, msg=nil]</strong><strong  style="color: gray;">[, msgNoResume=nil]</strong>)
     </a></td>
 	<td class="summary">接收数据</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#mt.__index:close">
-    mt.__index:close ()
+	<td class="name" nowrap><a href="#mt:close">
+    mt:close (slow)
     </a></td>
 	<td class="summary">销毁一个socket</td>
 	</tr>
@@ -146,6 +166,12 @@
     setDnsParser (<strong  style="color: gray;">[parserFnc=nil]</strong>)
     </a></td>
 	<td class="summary">设置用户自定义的DNS解析器.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#setSendMode">
+    setSendMode (<strong  style="color: gray;">[mode=0]</strong>)
+    </a></td>
+	<td class="summary">设置数据发送模式（在网络准备就绪之前调用此接口设置）.</td>
 	</tr>
 </table>
 <h2><a href="#Fields">Fields</a></h2>
@@ -239,9 +265,9 @@ c = socket.tcp(<span class="keyword">true</span>, {caCert=<span class="string">"
 
 </dd>
     <dt>
-    <a name = "mt.__index:connect"></a>
+    <a name = "mt:connect"></a>
     <strong  style="color: red;">
-    mt.__index:connect (address, port)
+    mt:connect (address, port, timeout)
     </strong>
     </dt>
     <dd>
@@ -257,6 +283,10 @@ c = socket.tcp(<span class="keyword">true</span>, {caCert=<span class="string">"
         <li><span class="parameter">port</span>
         <pre class="example"> string或者number类型，服务器端口</pre>
         </li>
+        <li><span class="parameter">timeout</span>
+            <span class="types"><span class="type">number</span></span>
+        <pre class="example"> 链接服务器最长超时时间</pre>
+        </li>
     </ul>
 
     <h3>Returns:</h3>
@@ -269,14 +299,106 @@ c = socket.tcp(<span class="keyword">true</span>, {caCert=<span class="string">"
 
     <h3>Usage:</h3>
     <ul>
-        <li><pre class="example">c = socket.tcp(); c:connect();</pre></il>
+        <li><pre class="example">c = socket.tcp(); c:connect(<span class="string">"www.baidu.com"</span>,<span class="number">80</span>,<span class="number">5</span>);</pre></il>
     </ul>
 
 </dd>
     <dt>
-    <a name = "mt.__index:send"></a>
+    <a name = "mt:asyncSelect"></a>
     <strong  style="color: red;">
-    mt.__index:send (data)
+    mt:asyncSelect (keepAlive, pingreq)
+    </strong>
+    </dt>
+    <dd>
+    <pre class="example"  style="color: red;">异步收发选择器</pre>
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">keepAlive</span>
+            <span class="types"><span class="type">number</span></span>
+        <pre class="example">服务器和客户端最大通信间隔时间,也叫心跳包最大时间,单位秒</pre>
+        </li>
+        <li><span class="parameter">pingreq</span>
+            <span class="types"><a class="type" href="https://www.lua.org/manual/5.1/manual.html#5.4">string</a></span>
+        <pre class="example">心跳包的字符串</pre>
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ul>
+        <li>
+        <pre class="example">boole,false 失败，true 表示成功</pre></il>
+    </ul>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "mt:asyncSend"></a>
+    <strong  style="color: red;">
+    mt:asyncSend (data)
+    </strong>
+    </dt>
+    <dd>
+    <pre class="example"  style="color: red;">异步发送数据</pre>
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">data</span>
+            <span class="types"><a class="type" href="https://www.lua.org/manual/5.1/manual.html#5.4">string</a></span>
+        <pre class="example"> 数据</pre>
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ul>
+        <li>
+        <pre class="example">result true - 成功，false - 失败</pre></il>
+    </ul>
+
+
+
+    <h3>Usage:</h3>
+    <ul>
+        <li><pre class="example">c = socket.tcp(); c:connect(); c:asyncSend(<span class="string">"12345678"</span>);</pre></il>
+    </ul>
+
+</dd>
+    <dt>
+    <a name = "mt:asyncRecv"></a>
+    <strong  style="color: red;">
+    mt:asyncRecv ()
+    </strong>
+    </dt>
+    <dd>
+    <pre class="example"  style="color: red;">异步接收数据</pre>
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+        <li>
+        <pre class="example">nil, 表示没有收到数据</pre></li>
+        <li>
+        <pre class="example">data 如果是UDP协议，返回新的数据包,如果是TCP,返回所有收到的数据,没有数据返回长度为0的空串</pre></li>
+    </ol>
+
+
+
+    <h3>Usage:</h3>
+    <ul>
+        <li><pre class="example">c = socket.tcp(); c:connect()</pre></il>
+        <li><pre class="example">data = c:asyncRecv()</pre></il>
+    </ul>
+
+</dd>
+    <dt>
+    <a name = "mt:send"></a>
+    <strong  style="color: red;">
+    mt:send (data)
     </strong>
     </dt>
     <dd>
@@ -306,9 +428,9 @@ c = socket.tcp(<span class="keyword">true</span>, {caCert=<span class="string">"
 
 </dd>
     <dt>
-    <a name = "mt.__index:recv"></a>
+    <a name = "mt:recv"></a>
     <strong  style="color: red;">
-    mt.__index:recv (<strong  style="color: green;">[timeout=0]</strong><strong  style="color: green;">[, msg=nil]</strong>)
+    mt:recv (<strong  style="color: green;">[timeout=0]</strong><strong  style="color: green;">[, msg=nil]</strong><strong  style="color: green;">[, msgNoResume=nil]</strong>)
     </strong>
     </dt>
     <dd>
@@ -326,6 +448,11 @@ c = socket.tcp(<span class="keyword">true</span>, {caCert=<span class="string">"
             <span class="types"><a class="type" href="https://www.lua.org/manual/5.1/manual.html#5.4">string</a></span>
          [<em>此参数可选，默认值为：</em> nil]
         <pre class="example"> 可选参数，控制socket所在的线程退出recv阻塞状态</pre>
+        </li>
+        <li><span class="parameter">msgNoResume</span>
+            <span class="types"><span class="type">bool</span></span>
+         [<em>此参数可选，默认值为：</em> nil]
+        <pre class="example"> 可选参数，控制socket所在的线程退出recv阻塞状态，false或者nil表示“在recv阻塞状态，收到msg消息，可以退出阻塞状态”，true表示不退出</pre>
         </li>
     </ul>
 
@@ -350,15 +477,21 @@ c = socket.tcp(<span class="keyword">true</span>, {caCert=<span class="string">"
 
 </dd>
     <dt>
-    <a name = "mt.__index:close"></a>
+    <a name = "mt:close"></a>
     <strong  style="color: red;">
-    mt.__index:close ()
+    mt:close (slow)
     </strong>
     </dt>
     <dd>
     <pre class="example"  style="color: red;">销毁一个socket</pre>
 
 
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">slow</span>
+        <pre class="example"></pre>
+        </li>
+    </ul>
 
     <h3>Returns:</h3>
     <ul>
@@ -458,6 +591,63 @@ setTcpResendPara(<span class="number">4</span>,<span class="number">16</span>)</
     </ul>
 
 </dd>
+    <dt>
+    <a name = "setSendMode"></a>
+    <strong  style="color: red;">
+    setSendMode (<strong  style="color: green;">[mode=0]</strong>)
+    </strong>
+    </dt>
+    <dd>
+    <pre class="example"  style="color: red;">设置数据发送模式（在网络准备就绪之前调用此接口设置）.
+ 如果设置为快发模式，注意如下两点：
+ 1、通过send接口发送的数据，如果成功发送到服务器，设备端无法获取到这个成功状态
+ 2、通过send接口发送的数据，如果发送失败，设备端可以获取到这个失败状态
+ 慢发模式可以获取到send接口发送的成功或者失败
+<p> ****************************************************************************************************************************************************************
+ TCP协议发送数据时，数据发送出去之后，必须等到服务器返回TCP ACK包，才认为数据发送成功，在网络较差的情况下，这种ACK确认就会导致发送过程很慢。
+ 从而导致用户程序后续的AT处理逻辑一直处于等待状态。例如执行AT+CIPSEND动作发送一包数据后，接下来要执行AT+QTTS播放TTS，但是CIPSEND一直等了1分钟才返回SEND OK，
+ 这时AT+QTTS就会一直等待1分钟，可能不是程序中想看到的。
+ 此时就可以设置为快发模式，AT+CIPSEND可以立即返回一个结果，此结果表示“数据是否被缓冲区所保存”，从而不影响后续其他AT指令的及时执行
+
+ AT版本可以通过AT+CIPQSEND指令、Luat版本可以通过socket.setSendMode接口设置发送模式为快发或者慢发
+
+ 快发模式下，在core中有一个1460*7=10220字节的缓冲区，要发送的数据首先存储到此缓冲区，然后在core中自动循环发送。
+ 如果此缓冲区已满，则AT+CIPSEND会直接返回ERROR，socket:send接口也会直接返回失败
+
+ 同时满足如下几种条件，适合使用快发模式：
+ 1.	发送的数据量小，并且发送频率低，数据发送速度远远不会超过core中的10220字节大小；
+      没有精确地判断标准，可以简单的按照3分钟不超过10220字节来判断；曾经有一个不适合快发模式的例子如下：
+      用户使用Luat版本的http上传一个几十K的文件，设置了快发模式，导致一直发送失败，因为循环的向core中的缓冲区插入数据，
+      插入数据的速度远远超过发送数据到服务器的速度，所以很快就导致缓冲区慢，再插入数据时，就直接返回失败
+ 2.	对每次发送的数据，不需要确认发送结果
+ 3.	数据发送功能不能影响其他功能的及时响应
+ ****************************************************************************************************************************************************************
+</pre>
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">mode</span>
+            <span class="types"><span class="type">number</span></span>
+         [<em>此参数可选，默认值为：</em> 0]
+        <pre class="example">数据发送模式，0表示慢发，1表示快发</pre>
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ul>
+        <li>
+        <pre class="example">nil</pre></il>
+    </ul>
+
+
+
+    <h3>Usage:</h3>
+    <ul>
+        <li><pre class="example">socket.setSendMode(<span class="number">1</span>)</pre></il>
+    </ul>
+
+</dd>
 </dl>
     <h2 class="section-header "><a name="Fields"></a>Fields</h2>
 
@@ -485,7 +675,7 @@ setTcpResendPara(<span class="number">4</span>,<span class="number">16</span>)</
 </div> <!-- id="main" -->
 <div id="about">
 <i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.6</a></i>
-<i style="float:right;">Last updated 2018-11-07 18:24:40 </i>
+<i style="float:right;">Last updated 2019-11-19 10:46:53 </i>
 </div> <!-- id="about" -->
 </div> <!-- id="container" -->
 </body>

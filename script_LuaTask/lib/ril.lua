@@ -49,6 +49,7 @@ local RILCMD = {
     ["+CPBF"] = 3,
     ["+CPBR"] = 3,
     ['+CLCC'] = 3,
+    ['+CNUM'] = 3,
     ["+CIPSEND"] = 10,
     ["+CIPCLOSE"] = 10,
     ["+SSLINIT"] = 10,
@@ -62,6 +63,12 @@ local RILCMD = {
     ["+CTFSGETID"] = 2,
     ["+CTFSDECRYPT"] = 2,
     ["+CTFSAUTH"] = 2,
+    ["+ALIPAYOPEN"] = 2,
+    ["+ALIPAYREP"] = 2,
+    ["+ALIPAYPINFO"] = 2,
+    ["+ALIPAYACT"] = 2,
+    ["+ALIPAYDID"] = 2,
+    ["+ALIPAYSIGN"] = 2,
 }
 
 --radioready：AT命令通道是否准备就绪
@@ -77,6 +84,8 @@ local cmdqueue = {
 local currcmd, currarg, currsp, curdelay, cmdhead, cmdtype, rspformt
 --反馈结果,中间信息,结果信息
 local result, interdata, respdata
+
+local sslCreating
 
 --ril会出现三种情况:
 --发送AT命令，收到应答
@@ -211,7 +220,7 @@ local function urc(data)
     if data == "RDY" then
         radioready = true
     else
-        local prefix = string.match(data, "(%+*[%u%d& ]+)")
+        local prefix = string.match(data, "([%+%*]*[%u%d& ]+)")
         --执行prefix的urc处理函数，返回数据过滤器
         urcfilter = urctable[prefix](data, prefix)
     end
@@ -262,6 +271,9 @@ local function procatc(data)
     --一些特殊的错误信息，转化为ERROR统一处理
     if string.find(data, "^%+CMS ERROR:") or string.find(data, "^%+CME ERROR:") or (data == "CONNECT FAIL" and currcmd and string.match(currcmd, "CIPSTART")) then
         data = "ERROR"
+    end
+    if sslCreating and data=="+PDP: DEACT" and tonumber(string.match(rtos.get_version(),"Luat_V(%d+)_"))<31 then
+        sys.publish("SSL_DNS_PARSE_PDP_DEACT")
     end
     --执行成功的应答
     if data == "OK" or data == "SHUT OK" then
@@ -340,7 +352,7 @@ local function procatc(data)
                 isurc = true
             end
         elseif cmdhead == "+SSLINIT" or cmdhead == "+SSLCERT" or cmdhead == "+SSLCREATE" or cmdhead == "+SSLCONNECT" or cmdhead == "+SSLSEND" or cmdhead == "+SSLDESTROY" or cmdhead == "+SSLTERM" then
-            if string.match(data, "^SSL&%d, *CLOSED") or string.match(data, "^SSL&%d, *ERROR")then
+            if string.match(data, "^SSL&%d, *CLOSED") or string.match(data, "^SSL&%d, *ERROR") or string.match(data, "SSL&%d,CONNECT ERROR") then
                 isurc = true
             elseif string.match(data, "^SSL&%d,") then
                 respdata = data
@@ -349,6 +361,7 @@ local function procatc(data)
                 else
                     result = true
                 end
+                if cmdhead=="+SSLCREATE" then sslCreating=false end
             else
                 isurc = true
             end
@@ -469,6 +482,8 @@ local function sendat()
     else
         sys.timerStart(atimeout, TIMEOUT)
     end
+    
+    if currcmd:match("^AT%+SSLCREATE") then sslCreating=true end
     
     log.info("ril.sendat", currcmd)
     --向虚拟串口中发送AT命令
